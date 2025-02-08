@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Hindi Chat Interface</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="container">
+    <!-- Left Panel: Microphone Button -->
+    <div class="left-panel">
+      <button id="micButton" class="idle">🎤</button>
+    </div>
+
+    <!-- Right Panel: Chat Interface -->
+    <div class="right-panel">
+      <div id="chat">
+        <!-- Chat messages will be appended here -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let isRecording = false;
+    let mediaRecorder;
+    let audioChunks = [];
+    
+    const micButton = document.getElementById('micButton');
+    const chat = document.getElementById('chat');
+
+    // Toggle microphone recording on button click.
+    micButton.addEventListener('click', async () => {
+      if (!isRecording) {
+        // Start recording
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          alert("Your browser does not support audio recording.");
+          return;
+        }
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+          mediaRecorder.ondataavailable = event => {
+            if (event.data.size > 0) {
+              audioChunks.push(event.data);
+            }
+          };
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/m4a' });
+            sendAudio(audioBlob);
+          };
+          mediaRecorder.start();
+          micButton.innerText = '⏹️'; // Change icon to stop
+          micButton.classList.remove('idle');
+          micButton.classList.add('recording');
+          isRecording = true;
+        } catch (error) {
+          console.error("Error accessing microphone:", error);
+        }
+      } else {
+        // Stop recording
+        mediaRecorder.stop();
+        micButton.innerText = '🎤';
+        micButton.classList.remove('recording');
+        micButton.classList.add('idle');
+        isRecording = false;
+      }
+    });
+
+    // Send the recorded audio blob to the Flask endpoint.
+    function sendAudio(audioBlob) {
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording.m4a');
+      
+      fetch('/process_audio', {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.error) {
+          alert('Error: ' + data.error);
+        } else {
+          // Append user text (left side) and bot text (right side) messages.
+          addMessage('user', data.user_text);
+          addMessage('bot', data.bot_text, data.audio_url);
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+      });
+    }
+
+    // Function to append messages in the chat window.
+    // If audioUrl is provided (for bot messages), append an audio player under the bot message.
+    function addMessage(sender, text, audioUrl = null) {
+      const messageContainer = document.createElement('div');
+      messageContainer.classList.add('message-container', sender);
+      
+      const messageDiv = document.createElement('div');
+      messageDiv.classList.add('message', sender);
+      messageDiv.innerText = text;
+      messageContainer.appendChild(messageDiv);
+      
+      // For bot messages, insert an audio player if audioUrl exists.
+      if (sender === 'bot' && audioUrl) {
+        const audioPlayer = document.createElement('audio');
+        audioPlayer.controls = true;
+        audioPlayer.src = audioUrl;
+        audioPlayer.classList.add('audio-player');
+        messageContainer.appendChild(audioPlayer);
+      }
+      
+      chat.appendChild(messageContainer);
+      chat.scrollTop = chat.scrollHeight;
+    }
+  </script>
+</body>
+</html>
