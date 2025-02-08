@@ -1,3 +1,4 @@
 .env
 static/audio
 venv
+__pycache__
